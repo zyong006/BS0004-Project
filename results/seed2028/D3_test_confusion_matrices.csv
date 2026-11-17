@@ -1,0 +1,9 @@
+"model","threshold","TP","FN","TN","FP"
+"KNN, leaky (genes ranked on all 38)","0.5",14,0,20,0
+"KNN, leaky (genes ranked on all 38)","Youden (training inner CV)",14,0,20,0
+"KNN, honest (genes ranked in fold)","0.5",12,2,20,0
+"KNN, honest (genes ranked in fold)","Youden (training inner CV)",13,1,19,1
+"Elastic net (primary)","0.5",12,2,20,0
+"Elastic net (primary)","Youden (training inner CV)",14,0,19,1
+"Shrunken centroids","0.5",13,1,19,1
+"Shrunken centroids","Youden (training inner CV)",13,1,19,1

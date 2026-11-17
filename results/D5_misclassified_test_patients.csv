@@ -1,0 +1,13 @@
+"model","threshold","patient","class","source","hospital","hospital_in_training","p_AML"
+"KNN, leaky (genes ranked on all 38)","0.5","66","AML","BM","CCG",FALSE,0.333
+"KNN, honest (genes ranked in fold)","0.5","66","AML","BM","CCG",FALSE,0.143
+"KNN, honest (genes ranked in fold)","Youden (training inner CV)","66","AML","BM","CCG",FALSE,0.143
+"Elastic net (primary)","0.5","60","AML","BM","St-Jude",FALSE,0.439
+"Elastic net (primary)","0.5","66","AML","BM","CCG",FALSE,0.307
+"Elastic net (primary)","Youden (training inner CV)","66","AML","BM","CCG",FALSE,0.307
+"Shrunken centroids","0.5","54","AML","BM","St-Jude",FALSE,0
+"Shrunken centroids","0.5","60","AML","BM","St-Jude",FALSE,0
+"Shrunken centroids","0.5","66","AML","BM","CCG",FALSE,0
+"Shrunken centroids","Youden (training inner CV)","54","AML","BM","St-Jude",FALSE,0
+"Shrunken centroids","Youden (training inner CV)","60","AML","BM","St-Jude",FALSE,0
+"Shrunken centroids","Youden (training inner CV)","66","AML","BM","CCG",FALSE,0

@@ -1,0 +1,5 @@
+"model","fits","k_values","fits_with_tied_k","genes_median","genes_range","youden_cut_median","youden_cut_range"
+"KNN, leaky (genes ranked on all 38)",100,"1:48 3:42 5:9 7:1",100,50,"50-50",0.417,"0.167 to 0.5"
+"KNN, honest (genes ranked in fold)",100,"1:21 3:23 5:15 7:21 9:7 11:10 13:3",69,50,"50-50",0.207,"0.056 to 0.5"
+"Elastic net (primary)",100,"n/a",NA,80,"70-97",0.406,"0.089 to 0.683"
+"Shrunken centroids",100,"n/a",NA,440.5,"1-2953",0.531,"0 to 1"

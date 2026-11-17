@@ -1,0 +1,5 @@
+"model","pooled_oof_AUC_mean","fold_averaged_AUC_mean","share_of_folds_with_AUC_1"
+"KNN, leaky (genes ranked on all 38)",0.982,0.982,0.92
+"KNN, honest (genes ranked in fold)",0.966,0.971,0.85
+"Elastic net (primary)",0.997,1,1
+"Shrunken centroids",0.988,0.997,0.98

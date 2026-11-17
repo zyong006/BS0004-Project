@@ -1,0 +1,9 @@
+"check","model","identical_fit","identical_predictions_on_training_rows"
+"outer validation rows corrupted","KNN, leaky (genes ranked on all 38)",TRUE,TRUE
+"test set replaced by noise","KNN, leaky (genes ranked on all 38)",TRUE,TRUE
+"outer validation rows corrupted","KNN, honest (genes ranked in fold)",TRUE,TRUE
+"test set replaced by noise","KNN, honest (genes ranked in fold)",TRUE,TRUE
+"outer validation rows corrupted","Elastic net (primary)",TRUE,TRUE
+"test set replaced by noise","Elastic net (primary)",TRUE,TRUE
+"outer validation rows corrupted","Shrunken centroids",TRUE,TRUE
+"test set replaced by noise","Shrunken centroids",TRUE,TRUE

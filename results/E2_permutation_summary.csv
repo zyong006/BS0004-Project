@@ -1,0 +1,2 @@
+"model","n_permutations","observed_mean_cv_AUC","null_mean","null_sd","null_max","null_95th","empirical_p"
+"Elastic net",200,0.997474747474748,0.488888888888889,0.0628242485810929,0.727441077441077,0.632276936026936,0.00497512437810945
