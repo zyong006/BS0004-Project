@@ -1,0 +1,73 @@
+// Logic of appendix_advanced_ml.R
+// Render: dot -Tpng -Gdpi=200 appendix_flowchart.dot -o appendix_flowchart.png
+digraph appendix {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=13, nodesep=0.35, ranksep=0.45, newrank=true, compound=true,
+         label="Logic of appendix_advanced_ml.R  (run once per seed: 2026 = main results, 2028 = sensitivity check)", labelloc=t];
+  node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=11, fillcolor="#ffffff", color="#555555", margin="0.15,0.07"];
+  edge  [color="#555555", fontname="Helvetica", fontsize=9, arrowsize=0.7];
+
+  // ---------------- data ----------------
+  data  [label="golubEsets\nGolub_Train: 38 patients (27 ALL, 11 AML), all bone marrow\nGolub_Test: 34 patients (20 ALL, 14 AML), 24 BM + 10 PB", fillcolor="#e8eef7"];
+  prep  [label="Fixed preprocessing, applied to both sets\nfloor 100, ceiling 16000, log10\n(fixed numbers: nothing learned from the data)", fillcolor="#e8eef7"];
+  repro [label="Reproduce the original (leaky) estimate\nrank genes on all 38, caret 5-fold CV\ncheck: same top-10 genes, AUC = 1 for every k, k = 15\n-> A1", fillcolor="#f2f2f2"];
+  data -> prep -> repro;
+
+  // ---------------- training set only ----------------
+  subgraph cluster_train {
+    label="TRAINING SET ONLY (38 patients). The test set is never seen here."; fontsize=12; style="rounded,dashed"; color="#2a6fb0"; fontcolor="#2a6fb0";
+
+    plan [label="make_plan(): draw all folds up front\n20 repeats x stratified 5 outer folds\n+ stratified 5 inner folds inside each outer training part\n(assert: every fold has both ALL and AML)", fillcolor="#e8eef7"];
+
+    subgraph cluster_outer {
+      label="nested_cv(): for each repeat r and outer fold f   (4 procedures, same folds)"; fontsize=11; style="rounded"; color="#888888"; fontcolor="#333333";
+      split [label="Outer split\nouter training part (~30)   |   outer validation fold (~8, held out)"];
+      fit   [label="fit_model(outer training rows ONLY)\ndetails: yellow box, Inside fit_model", fillcolor="#fff4d6", color="#c98a00"];
+      pred  [label="Predict the held-out fold\n-> P(AML) for each patient\ncall AML if P >= 0.5  and  if P >= Youden cut"];
+      split -> fit -> pred;
+    }
+    pool [label="Pool out-of-fold predictions per repeat (every patient once)\nAUC, sensitivity, specificity, accuracy, balanced accuracy\nsummarise over 20 repeats -> A2, A3 (tuning), A4 (pooled vs fold-averaged)", fillcolor="#e3f1e3"];
+
+    perm [label="Permutation test (elastic net only)\nshuffle training labels x 200\nrerun the FULL nested CV each time\n-> null AUC distribution, empirical p  (E2)", fillcolor="#f7e8e8"];
+    stab [label="Gene stability (elastic net, shrunken centroids)\n100 stratified 80% subsamples, fit_model on each\ncount how often each probe is selected\nadd symbols (GEO GPL80), direction, top-10 overlap  (F)", fillcolor="#f7e8e8"];
+
+    plan -> split [lhead=cluster_outer];
+    pred -> pool;
+  }
+  repro -> plan;
+  plan -> perm [style=dashed, label=" new folds for\n each permutation"];
+  plan -> stab [style=dashed];
+
+  // ---------------- fit_model detail ----------------
+  subgraph cluster_fit {
+    label="Inside fit_model(fitting rows only)"; fontsize=12; style="rounded,filled"; fillcolor="#fffaf0"; color="#c98a00"; fontcolor="#8a5d00";
+    f1 [label="Variation filter on the fitting rows\nmax/min > 5 and max - min > 500"];
+    f2 [label="Inner CV (stratified 5-fold) to tune ONE setting\nKNN: odd k <= 15 and k < 2 x AML in smallest inner fit set\n      (genes re-ranked by |log2 FC| inside every inner fold;\n       leaky KNN: 50 genes fixed from all 38)\nElastic net: lambda (alpha 0.5, class weights, deviance)\nShrunken centroids: shrinkage threshold (equal priors)"];
+    f3 [label="Inner out-of-fold probabilities at the chosen setting\n-> Youden cut-off (ties: closest to 0.5)"];
+    f4 [label="Refit on ALL fitting rows with the chosen setting\nKNN: top-50 |log2 FC| genes, z-score with fitting-row mean/SD\nElastic net / pamr: package standardisation on fitting rows"];
+    f5 [label="Return: genes, k / lambda / shrinkage, cut-off,\nselected probes", fillcolor="#ffffff"];
+    f1 -> f2 -> f3 -> f4 -> f5;
+  }
+  fit -> f1 [style=dotted, lhead=cluster_fit, arrowhead=none, color="#c98a00"];
+
+  // ---------------- final model + test ----------------
+  final [label="Final model per procedure\nfit_model on all 38 training patients\n(one stratified 5-fold inner split)", fillcolor="#fff4d6", color="#c98a00"];
+  test  [label="INDEPENDENT TEST SET (34): predict ONCE per model\nno model, gene number, setting or cut-off chosen here", fillcolor="#fde2cf", color="#c0504d"];
+  out1  [label="Stratified bootstrap 95% CI (2000)\nAUC, AML recall, specificity, accuracy\nat 0.5 and at the training Youden cut  (D2)\nconfusion matrices (D3), probabilities (D4)"];
+  out2  [label="Misclassified patients\nwith sample source and hospital  (D5)"];
+  out3  [label="Bone marrow vs peripheral blood\nper model, bootstrap CI  (G)"];
+  pool -> final [style=invis];
+  fit -> final [label=" same procedure,\n all 38 rows", ltail=cluster_outer];
+  final -> test;
+  test -> out1; test -> out2; test -> out3;
+
+  // ---------------- checks ----------------
+  canary [label="Leakage canary checks  (I)\nreplace outer-validation rows with noise + flipped labels, refit:\nidentical fit?  replace test set with noise: identical fit?\nscript stops if any check fails", fillcolor="#f2f2f2"];
+  figs   [label="Figures 1-5, CSV tables, all_results.rds\nRESULTS.md written from these tables", fillcolor="#e3f1e3"];
+  out1 -> canary [style=invis];
+  {pool perm stab out1 out2 out3} -> canary [style=invis];
+  final -> canary [style=dashed];
+  canary -> figs;
+
+  {rank=same; perm; stab;}
+  {rank=same; out1; out2; out3;}
+}

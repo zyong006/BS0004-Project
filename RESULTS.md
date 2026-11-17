@@ -83,8 +83,9 @@ For comparison, the original KNN (50 genes, k = 15, cut-off 0.5) caught 9 of 14 
 **Who was misclassified** (`D5_misclassified_test_patients.csv`):
 
 - **All errors at seed 2026 came from hospitals with no training samples.** The training samples came from DFCI and CALGB only. At seed 2026, every misclassified test patient, for every model and both cut-offs, came from St-Jude or CCG.
-- **Patient 66 was missed by every model at both cut-offs, with both seeds.** This patient is AML, bone marrow, from CCG. Elastic net scored them 0.307.
-- **At seed 2028, one training-hospital patient was also wrong.** Patient 67 (ALL, blood, DFCI) became a false positive at the tuned cut-offs.
+- **Patient 66 was missed by every honest model at the 0.5 cut-off, with both seeds.** This patient is AML, bone marrow, from CCG; elastic net scored them 0.307. They were caught only at very low cut-offs: by leaky KNN at its Youden cut-off of 0.167 (seed 2026), and by elastic net at its Youden cut-off of 0.257 (seed 2028).
+- **At seed 2028, one training-hospital patient was also wrong.** Patient 67 (ALL, blood, DFCI) became a false positive for honest KNN and elastic net at their tuned cut-offs, and for shrunken centroids at both cut-offs.
+- **In the training set, hospital and diagnosis are completely confounded.** All 27 ALL come from DFCI and all 11 AML from CALGB, so a model cannot separate "AML" from "processed at CALGB". In the test set, AML from the two new hospitals got lower elastic net probabilities than AML from CALGB: median 0.84 vs 0.99, Wilcoxon p = 0.034. St-Jude contributes both classes, and its 3 ALL were still scored as clearly ALL (0.001-0.014), so the model is not detecting hospital alone. The confounding does, however, plausibly explain why the misses are all AML from new hospitals.
 
 ## 4. Permutation test (elastic net, full nested CV rerun on each permutation)
 
@@ -138,7 +139,7 @@ For comparison, the original KNN (50 genes, k = 15, cut-off 0.5) caught 9 of 14 
 | Elastic net | Youden | 1 | 0.958 (0.875-1.000) | 0 | 1.000 |
 | Shrunken centroids | 0.5 | 3 | 0.875 (0.750-1.000) | 0 | 1.000 |
 
-- **At seed 2026, no model made an error on the 10 blood samples.** At seed 2028, each model made at most one blood error. Two of those errors were patient 67, a false positive at the tuned cut-offs, and one was a missed AML.
+- **At seed 2026, no model made an error on the 10 blood samples.** At seed 2028, each model made at most one blood error per cut-off. Four of those five errors were patient 67 (ALL, DFCI, false positive). The fifth was honest KNN at 0.5 missing patient 64 (AML, CCG).
 - **A marrow-trained model did not do worse on blood, but this test is weak.** It rests on 4 blood AML and 6 blood ALL patients. A bootstrap interval of 1.000-1.000 only means there were no errors to resample, not that there is no uncertainty.
 - **Hospital is mixed up with sample type.** The errors line up with the hospitals that have no training samples (section 3), and those hospitals contribute both marrow and blood samples. That confounder could matter more than sample type.
 
@@ -162,7 +163,7 @@ The whole analysis was rerun with seed 2028, which changed the folds, bootstrap 
 ## 8. How this relates to the original report
 
 - **Problem 1, leaky CV:** confirmed. The CV AUC of 1.000 for every k came from leaky gene ranking and caret's tie-break. Honest nested CV gives AUC 0.969 for KNN.
-- **Problem 3, threshold:** confirmed for KNN. A cut-off learned in training CV fixes most of the missed AML in CV. On the test set, the honest KNN already caught 13/14 at 0.5, because it chose k = 7, not k = 15.
+- **Problem 3, threshold:** confirmed for KNN. A cut-off learned in training CV fixes most of the missed AML in CV. On the test set, the honest KNN already caught 13/14 at 0.5. Its final model chose k = 7, not k = 15, which is the most likely reason, but this was not tested separately.
 - **Problem 6, panel size:** not re-tested as a curve. Where the training data chose the panel size themselves, they did not pick 2-5 genes: elastic net used 83 genes and shrunken centroids 886-3051. So the report's "3 genes is best" claim is not supported by any choice made without the test set. Treat it as a test-set observation, not a finding.
 - **Blood samples:** the report says 9 of 10 blood samples were correct. The models here got 10 of 10 (seed 2026). Neither number can show that blood is as good as marrow, because there are only 10 blood samples and hospital is a confounder.
 
@@ -189,6 +190,17 @@ The whole analysis was rerun with seed 2028, which changed the folds, bootstrap 
 ## 10. Caveats
 
 - **Few AML in inner folds:** the inner fitting sets contain only about 7 AML patients. glmnet warned that a class had fewer than 8 observations. The run log reports 21 warnings in total; their individual text was not captured. In the smoke test they were this glmnet warning.
+- **The bootstrap intervals for proportions are too narrow.** With 14 AML and 20 ALL, the percentile bootstrap cannot go below the observed value when there are no errors, and it understates the width otherwise. Exact Clopper-Pearson intervals are wider:
+
+  | Result | Bootstrap (reported above) | Exact Clopper-Pearson |
+  |---|---|---|
+  | 13/14 AML recall | 0.786-1.000 | 0.661-0.998 |
+  | 12/14 AML recall | 0.643-1.000 | 0.572-0.982 |
+  | 20/20 specificity | 1.000-1.000 | 0.832-1.000 |
+  | 4/4 blood AML | 1.000-1.000 | 0.398-1.000 |
+
+  Use the exact intervals when quoting recall, specificity or accuracy. The bootstrap is kept for AUC, which has no exact interval.
+- **Shrunken centroids posteriors are extreme.** On the test set, every posterior rounds to 0.000 or 1.000 (`D4_test_probabilities.csv`), so the missed AML are confidently wrong. This is why tuning the cut-off cannot change its results.
 - **Ceiling effect:** performance is near the ceiling, and the test set has 14 AML. One patient changes recall by 0.071, so no difference between models in this appendix should be read as meaningful.
 
 ## sessionInfo()
