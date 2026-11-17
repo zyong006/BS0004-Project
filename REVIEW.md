@@ -1,5 +1,25 @@
 # Review of the appendix results
 
+## Status after version 2
+
+This review was written for version 1 of the appendix, and the numbers below refer to it. Every fix in section 7 has since been applied (version 2, see RESULTS.md):
+
+| Fix (section 7) | Done | Outcome |
+|---|---|---|
+| Exact Clopper-Pearson intervals for proportions | Yes | For example, 13/14 = 0.929 (0.661-0.998); 20/20 = 1.000 (0.832-1.000). |
+| CV brackets relabelled "range across repeats" | Yes | In the column headers, `README_columns.txt` and RESULTS.md. |
+| Hospital added to the limitations | Yes | New tables J1-J3 and Figure 7. AML at new hospitals scored lower (elastic net median 0.839 vs 0.994, p = 0.036). |
+| Inner CV repeated before choosing settings | Yes (10 x 5-fold) | KNN now chooses k = 11 with both seeds; elastic net lambda is identical across seeds. Shrunken centroids remain unstable. |
+| Nested panel-size curve | Yes | CV AUC 0.754 (1 gene), 0.918 (3), 0.968 (5), 0.992 (50). The training data do not support "3 genes is enough". |
+| KNN with t-statistic ranking | Yes | Best in CV: AUC 1.000 and balanced accuracy at 0.5 of 0.981, vs 0.992 and 0.854 for fold change. |
+| Shrunken centroids with the 1-SE rule (post hoc) | Yes | Fewer genes (1201 / 638), but not better in CV (AUC 0.983 vs 0.993). |
+
+Points from this review that version 2 confirmed or changed:
+
+- **Patient 66 is still missed.** In version 2, this patient (AML, CCG) is missed by every procedure at 0.5 with both seeds.
+- **The only false positive is a training-hospital patient.** It is patient 67 (ALL, blood, DFCI), so "all errors come from new hospitals" is true for missed AML only.
+- **The leak shows in sensitivity, not AUC.** Version 2's stable tuning gives honest KNN a CV AUC of 0.992 vs 0.982 for leaky. As section 2.4 argued, the leak changes the chosen k and therefore the sensitivity at 0.5: 0.709 honest vs 0.927 leaky.
+
 This review checks the appendix analysis (`appendix_advanced_ml.R`, `RESULTS.md`, `results/`) for errors, weak points and overclaims. The aim is to show what the group can safely say in the report and what it cannot. Where a point needed a new calculation, the numbers come from the saved results or from the Golub clinical data (`pData`); nothing was rerun with different settings.
 
 ## Verdict

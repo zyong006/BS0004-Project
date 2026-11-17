@@ -1,13 +1,29 @@
 "model","threshold","patient","class","source","hospital","hospital_in_training","p_AML"
-"KNN, leaky (genes ranked on all 38)","0.5","66","AML","BM","CCG",FALSE,0.333
-"KNN, honest (genes ranked in fold)","0.5","66","AML","BM","CCG",FALSE,0.143
-"KNN, honest (genes ranked in fold)","Youden (training inner CV)","66","AML","BM","CCG",FALSE,0.143
+"KNN, leaky (genes ranked on all 38)","0.5","66","AML","BM","CCG",FALSE,0.2
+"KNN, leaky (genes ranked on all 38)","Youden (training inner CV)","66","AML","BM","CCG",FALSE,0.2
+"KNN, honest, |log2 FC| (50 genes)","0.5","66","AML","BM","CCG",FALSE,0.182
+"KNN, honest, |log2 FC| (50 genes)","0.5","64","AML","PB","CCG",FALSE,0.364
+"KNN, honest, |log2 FC| (50 genes)","Youden (training inner CV)","67","ALL","PB","DFCI",TRUE,0.273
+"KNN, honest, |log2 FC| (50 genes)","Youden (training inner CV)","66","AML","BM","CCG",FALSE,0.182
+"KNN, honest, t-statistic (50 genes)","0.5","67","ALL","PB","DFCI",TRUE,0.667
+"KNN, honest, t-statistic (50 genes)","0.5","66","AML","BM","CCG",FALSE,0.222
+"KNN, honest, t-statistic (50 genes)","Youden (training inner CV)","67","ALL","PB","DFCI",TRUE,0.667
+"KNN, honest, t-statistic (50 genes)","Youden (training inner CV)","66","AML","BM","CCG",FALSE,0.222
+"KNN, honest, panel size tuned (1-50 genes)","0.5","66","AML","BM","CCG",FALSE,0.182
+"KNN, honest, panel size tuned (1-50 genes)","0.5","64","AML","PB","CCG",FALSE,0.364
+"KNN, honest, panel size tuned (1-50 genes)","Youden (training inner CV)","67","ALL","PB","DFCI",TRUE,0.273
+"KNN, honest, panel size tuned (1-50 genes)","Youden (training inner CV)","66","AML","BM","CCG",FALSE,0.182
 "Elastic net (primary)","0.5","60","AML","BM","St-Jude",FALSE,0.439
 "Elastic net (primary)","0.5","66","AML","BM","CCG",FALSE,0.307
+"Elastic net (primary)","Youden (training inner CV)","60","AML","BM","St-Jude",FALSE,0.439
 "Elastic net (primary)","Youden (training inner CV)","66","AML","BM","CCG",FALSE,0.307
-"Shrunken centroids","0.5","54","AML","BM","St-Jude",FALSE,0
-"Shrunken centroids","0.5","60","AML","BM","St-Jude",FALSE,0
-"Shrunken centroids","0.5","66","AML","BM","CCG",FALSE,0
-"Shrunken centroids","Youden (training inner CV)","54","AML","BM","St-Jude",FALSE,0
-"Shrunken centroids","Youden (training inner CV)","60","AML","BM","St-Jude",FALSE,0
-"Shrunken centroids","Youden (training inner CV)","66","AML","BM","CCG",FALSE,0
+"Shrunken centroids, min-error rule","0.5","54","AML","BM","St-Jude",FALSE,0
+"Shrunken centroids, min-error rule","0.5","60","AML","BM","St-Jude",FALSE,0
+"Shrunken centroids, min-error rule","0.5","66","AML","BM","CCG",FALSE,0
+"Shrunken centroids, min-error rule","Youden (training inner CV)","54","AML","BM","St-Jude",FALSE,0
+"Shrunken centroids, min-error rule","Youden (training inner CV)","60","AML","BM","St-Jude",FALSE,0
+"Shrunken centroids, min-error rule","Youden (training inner CV)","66","AML","BM","CCG",FALSE,0
+"Shrunken centroids, 1-SE rule (post hoc)","0.5","67","ALL","PB","DFCI",TRUE,1
+"Shrunken centroids, 1-SE rule (post hoc)","0.5","66","AML","BM","CCG",FALSE,0
+"Shrunken centroids, 1-SE rule (post hoc)","Youden (training inner CV)","67","ALL","PB","DFCI",TRUE,1
+"Shrunken centroids, 1-SE rule (post hoc)","Youden (training inner CV)","66","AML","BM","CCG",FALSE,0

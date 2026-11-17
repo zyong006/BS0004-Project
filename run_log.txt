@@ -1,23 +1,45 @@
 
 ================ SEED 2026 ================
-07:05:06 original caret CV AUC by k: 1 1 1 1 1 1 1 1 | chosen k = 15 
-07:05:07 nested CV done: knn_leaky 0 min 
-07:05:10 nested CV done: knn_honest 0.1 min 
-07:05:14 nested CV done: enet 0.1 min 
-07:05:18 nested CV done: nsc 0.1 min 
-07:05:22 test set evaluated 
-07:08:46 permutation test done: 3.2 min 
-07:08:52 gene stability done 
-07:08:53 leakage canary checks passed 
+02:33:32 original caret CV AUC by k: 1 1 1 1 1 1 1 1 | chosen k = 15 
+02:33:33 nested CV done: knn_leaky 0 min 
+02:33:45 nested CV done: knn_honest 0.2 min 
+02:34:11 nested CV done: knn_t 0.4 min 
+02:34:26 nested CV done: knn_panel 0.3 min 
+02:34:36 nested CV done: enet 0.2 min 
+02:34:49 nested CV done: nsc 0.2 min 
+02:35:02 nested CV done: nsc_1se 0.2 min 
+02:35:14 nested CV done: knn_size_1 0.2 min 
+02:35:25 nested CV done: knn_size_2 0.2 min 
+02:35:36 nested CV done: knn_size_3 0.2 min 
+02:35:47 nested CV done: knn_size_5 0.2 min 
+02:35:58 nested CV done: knn_size_10 0.2 min 
+02:36:09 nested CV done: knn_size_20 0.2 min 
+02:36:21 nested CV done: knn_size_50 0.2 min 
+02:36:40 test set evaluated 
+02:36:50 hospital and panel-size tables done 
+02:57:59 permutation test done: 20.6 min 
+02:58:27 gene stability done 
+02:58:50 leakage canary checks passed 
 
 ================ SEED 2028 ================
-07:08:54 original caret CV AUC by k: 1 1 1 1 1 1 1 1 | chosen k = 15 
-07:08:54 nested CV done: knn_leaky 0 min 
-07:08:59 nested CV done: knn_honest 0.1 min 
-07:09:03 nested CV done: enet 0.1 min 
-07:09:08 nested CV done: nsc 0.1 min 
-07:09:12 test set evaluated 
-07:12:17 permutation test done: 2.9 min 
-07:12:21 gene stability done 
-07:12:22 leakage canary checks passed 
-There were 21 warnings (use warnings() to see them)
+02:58:51 original caret CV AUC by k: 1 1 1 1 1 1 1 1 | chosen k = 15 
+02:58:52 nested CV done: knn_leaky 0 min 
+02:59:02 nested CV done: knn_honest 0.2 min 
+02:59:25 nested CV done: knn_t 0.4 min 
+02:59:37 nested CV done: knn_panel 0.2 min 
+02:59:44 nested CV done: enet 0.1 min 
+02:59:54 nested CV done: nsc 0.2 min 
+03:00:04 nested CV done: nsc_1se 0.2 min 
+03:00:14 nested CV done: knn_size_1 0.2 min 
+03:00:23 nested CV done: knn_size_2 0.2 min 
+03:00:32 nested CV done: knn_size_3 0.2 min 
+03:00:41 nested CV done: knn_size_5 0.2 min 
+03:00:51 nested CV done: knn_size_10 0.2 min 
+03:01:00 nested CV done: knn_size_20 0.2 min 
+03:01:10 nested CV done: knn_size_50 0.2 min 
+03:01:28 test set evaluated 
+03:01:37 hospital and panel-size tables done 
+03:22:57 permutation test done: 20.8 min 
+03:23:26 gene stability done 
+03:23:48 leakage canary checks passed 
+There were 50 or more warnings (use warnings() to see the first 50)

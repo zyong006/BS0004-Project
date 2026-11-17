@@ -11,11 +11,13 @@ How to read it, top to bottom:
    - The permutation test and the gene-stability analysis reuse the same fitting procedure.
 4. **Inside `fit_model()` (yellow box).** The steps are:
    - the variation filter;
-   - inner CV to tune one setting per model;
-   - a Youden cut-off from the inner out-of-fold probabilities;
+   - inner CV (5-fold, repeated 10 times) to tune each model's settings;
+   - a Youden cut-off from the inner out-of-fold probabilities, averaged over the 10 repeats;
    - a refit on all fitting rows.
-5. **Final models and the test set.** The same procedure is run on all 38 training patients, and the 34 test patients are predicted once per model.
-6. **Leakage canary checks, then tables, figures and RESULTS.md.**
+5. **Panel-size curve.** KNN with 1 to 50 genes, each as a fixed procedure through the nested CV.
+6. **Final models and the test set.** The same procedure is run on all 38 training patients, and the 34 test patients are predicted once per model.
+   Test results are reported with exact intervals, by hospital, and by sample source.
+7. **Leakage canary checks, then tables, figures and RESULTS.md.**
 
 The whole chart runs once per seed: 2026 for the main results and 2028 for the sensitivity check.
 

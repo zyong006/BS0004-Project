@@ -1,5 +1,8 @@
 "model","hyperparameter","genes_used","youden_cut"
-"KNN, leaky (genes ranked on all 38)","k = 3 (7 k values tied on inner AUC)",50,0.167
-"KNN, honest (genes ranked in fold)","k = 7 (5 k values tied on inner AUC)",50,0.214
-"Elastic net (primary)","lambda = 0.008721",83,0.38
-"Shrunken centroids","shrinkage threshold = 0.000",3051,0.489
+"KNN, leaky (genes ranked on all 38)","k = 5, 50 genes (6 settings tied on inner AUC)",50,0.26
+"KNN, honest, |log2 FC| (50 genes)","k = 11, 50 genes (1 settings tied on inner AUC)",50,0.205
+"KNN, honest, t-statistic (50 genes)","k = 9, 50 genes (1 settings tied on inner AUC)",50,0.556
+"KNN, honest, panel size tuned (1-50 genes)","k = 11, 50 genes (1 settings tied on inner AUC)",50,0.205
+"Elastic net (primary)","lambda = 0.008721",83,0.566
+"Shrunken centroids, min-error rule","shrinkage threshold = 0.000",3051,0.497
+"Shrunken centroids, 1-SE rule (post hoc)","shrinkage threshold = 0.860",1201,0.832

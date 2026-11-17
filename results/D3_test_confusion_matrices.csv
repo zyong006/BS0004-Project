@@ -1,9 +1,15 @@
-"model","threshold","TP","FN","TN","FP"
-"KNN, leaky (genes ranked on all 38)","0.5",13,1,20,0
-"KNN, leaky (genes ranked on all 38)","Youden (training inner CV)",14,0,20,0
-"KNN, honest (genes ranked in fold)","0.5",13,1,20,0
-"KNN, honest (genes ranked in fold)","Youden (training inner CV)",13,1,20,0
-"Elastic net (primary)","0.5",12,2,20,0
-"Elastic net (primary)","Youden (training inner CV)",13,1,20,0
-"Shrunken centroids","0.5",11,3,20,0
-"Shrunken centroids","Youden (training inner CV)",11,3,20,0
+"model","threshold","cut_off","TP","FN","TN","FP"
+"KNN, leaky (genes ranked on all 38)","0.5",0.5,13,1,20,0
+"KNN, leaky (genes ranked on all 38)","Youden (training inner CV)",0.26,13,1,20,0
+"KNN, honest, |log2 FC| (50 genes)","0.5",0.5,12,2,20,0
+"KNN, honest, |log2 FC| (50 genes)","Youden (training inner CV)",0.205,13,1,19,1
+"KNN, honest, t-statistic (50 genes)","0.5",0.5,13,1,19,1
+"KNN, honest, t-statistic (50 genes)","Youden (training inner CV)",0.556,13,1,19,1
+"KNN, honest, panel size tuned (1-50 genes)","0.5",0.5,12,2,20,0
+"KNN, honest, panel size tuned (1-50 genes)","Youden (training inner CV)",0.205,13,1,19,1
+"Elastic net (primary)","0.5",0.5,12,2,20,0
+"Elastic net (primary)","Youden (training inner CV)",0.566,12,2,20,0
+"Shrunken centroids, min-error rule","0.5",0.5,11,3,20,0
+"Shrunken centroids, min-error rule","Youden (training inner CV)",0.497,11,3,20,0
+"Shrunken centroids, 1-SE rule (post hoc)","0.5",0.5,13,1,19,1
+"Shrunken centroids, 1-SE rule (post hoc)","Youden (training inner CV)",0.832,13,1,19,1

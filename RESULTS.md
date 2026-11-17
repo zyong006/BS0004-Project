@@ -1,207 +1,429 @@
 # Appendix: more rigorous machine learning on the Golub ALL vs AML data
 
-All numbers below come from `results/` (seed 2026) and `results/seed2028/`. They were produced by one run of `appendix_advanced_ml.R`.
+This appendix re-examines the group's Golub (1999) analysis with stricter methods, and explains what each method is and why it was used. Every number comes from one run of `appendix_advanced_ml.R` (version 2). Main results use seed 2026 (`results/`); the same analysis rerun with seed 2028 is in `results/seed2028/`.
 
-- **Positive class:** AML.
-- **Cross-validation (CV):** "CV" means nested CV on the 38 training patients: an outer loop of stratified 5-fold CV repeated 20 times, and an inner loop of stratified 5-fold CV inside each outer training fold.
-- **CV intervals:** given as the mean, with the 2.5th to 97.5th percentile across the 20 repeats in brackets.
-- **Test-set intervals:** stratified bootstrap 95% confidence intervals (CI) from 2000 resamples.
+Each analysis section follows the same pattern:
 
-## 0. Starting point and checks
+- **What:** what was done.
+- **Why:** the problem it addresses.
+- **Result:** the numbers.
+- **Meaning:** what the group can conclude.
 
-- **Original script:** the original script was read and not modified. It was not on this computer at the path given, so the copy pasted into the conversation was used.
-- **Preprocessing matches the original:** the appendix reimplements the same preprocessing. The script stops if the top-10 fold-change probes it finds differ from the original top-10. They matched exactly, and 3051 genes passed the variation filter, as in the report.
-- **Original leaky estimate reproduced** (`A1_original_caret_leaky_cv.csv`): genes were ranked on all 38 patients, then caret's 5-fold CV was run. The CV AUC was 1.000 for every odd k from 1 to 15, so caret's tie-break picked k = 15. This is identical to the report.
-- **Gene symbols:** the Bioconductor package `hu6800.db` was not installed (the install was stopped). Symbols were therefore taken from the NCBI GEO annotation of the Hu6800 array (GPL80), saved in `annotation/GPL80.annot.gz`.
-  - In that annotation, probe D88270_at maps to **VPREB1**; the report's Table 2 calls it IGL.
+Section 1 explains the terms used throughout.
 
-## 1. Nested cross-validation: leaky vs honest KNN, elastic net, shrunken centroids
+---
 
-`A2_nested_cv_performance.csv` (seed 2026):
+## 1. Key terms
 
-| Model | Cut-off | AUC | Sensitivity (AML recall) | Specificity | Balanced accuracy |
+### Measures of performance
+
+AML is the "positive" class throughout, because missing an AML patient is the more dangerous error: they would receive the wrong chemotherapy.
+
+| Term | Plain meaning |
+|---|---|
+| **Sensitivity (AML recall)** | Of all true AML patients, the share the model calls AML. 13/14 = 0.929. |
+| **Specificity** | Of all true ALL patients, the share the model calls ALL. |
+| **Accuracy** | Share of all patients classified correctly. With 27 ALL and 11 AML in training, a model that always says "ALL" already scores 71%, so accuracy alone can mislead. |
+| **Balanced accuracy** | The average of sensitivity and specificity. The "always ALL" model scores 0.5 on it, so the class imbalance cannot hide a poor model. |
+| **AUC** (area under the ROC curve) | The chance that a randomly chosen AML patient receives a higher AML score than a randomly chosen ALL patient. 0.5 = guessing, 1.0 = perfect ranking. AUC measures how well the model *ranks* patients and does not depend on any cut-off. |
+| **Cut-off (decision threshold)** | Each model gives a score, P(AML), between 0 and 1. A patient is called AML if the score is at or above the cut-off. The default is 0.5. |
+
+### Youden's index and the Youden cut-off
+
+- **What it is.** Youden's J = sensitivity + specificity − 1. It is 0 for a useless test and 1 for a perfect one. The **Youden cut-off** is the value of the cut-off that makes J as large as possible: the point where catching AML and correctly clearing ALL are best balanced, with both errors counted as equally bad.
+- **Why we used it.** The original model had AUC 0.991, meaning it ranked almost every AML patient above almost every ALL patient, yet it missed 5 of 14 AML at the 0.5 cut-off.
+  - The missed AML patients scored 0.12-0.40: ranked correctly, but under 0.5.
+  - The cause is imbalance. With 27 ALL and 11 AML in training, most of a patient's k nearest neighbours tend to be ALL, so AML scores are pulled down.
+  - The fix is to move the cut-off, not to change the model. Youden's J is the standard, assumption-free way of choosing where to move it.
+- **The rule that makes it valid.** The cut-off must be chosen using training patients only, from predictions made on patients the model had not been fitted to (inner-fold out-of-fold predictions, explained below).
+  - Choosing it on the patients being scored would make the result look better than it is. This is "leakage".
+  - When several cut-offs tie on J, we take the one closest to 0.5, so the default is kept unless the data clearly argue against it.
+
+### Cross-validation
+
+| Term | Plain meaning |
+|---|---|
+| **Cross-validation (CV)** | Split the training patients into 5 groups ("folds"). Fit on 4 folds, predict the 5th, and rotate until every patient has been predicted once by a model that never saw them. |
+| **Stratified** | Each fold keeps roughly the same ALL:AML ratio as the whole set, so no fold is all ALL. The script checks that every fold contains both classes. |
+| **Repeated** | The random split into folds is redone several times and the results averaged, so the answer does not depend on one lucky or unlucky split. |
+| **Hyperparameter** | A setting chosen before fitting rather than learned from the data, for example k in KNN. |
+| **Nested CV** | CV inside CV. The *outer* loop scores the method. The *inner* loop, run separately inside each outer training part, chooses the hyperparameters and the cut-off. A score is only honest if nothing about the patients being scored was used to make choices. |
+| **Data leakage** | Any route by which the patients being scored influence the model. The original script ranked genes using all 38 training patients *before* CV, so each CV fold was scored with genes chosen partly on that fold's own patients. |
+| **Range across repeats** | The CV figures in brackets are the 2.5th-97.5th percentiles over the 20 outer repeats. They show how much the result moves when the same 38 patients are re-split. **They are not confidence intervals**, because they say nothing about new patients. |
+
+### Models
+
+| Term | Plain meaning |
+|---|---|
+| **KNN** | k-nearest neighbours. A new patient's AML score is the share of AML among the k most similar training patients, with similarity measured as Euclidean distance on z-scored genes. |
+| **\|log2 fold change\| ranking** | Genes ranked by how different the two class means are. Used in the original script. It ignores how much patients vary within each class. |
+| **t-statistic ranking** | Genes ranked by the difference in means divided by its standard error. A gene with a big difference but large spread within classes ranks lower. Golub et al. used a similar signal-to-noise score. |
+| **Elastic net** | Logistic regression with a penalty that shrinks most gene weights to exactly zero, so the model chooses its own genes. It mixes the "lasso" and "ridge" penalties (alpha = 0.5). **lambda** sets how strong the penalty is. **Class weights** make the 11 AML count as much in total as the 27 ALL. |
+| **Nearest shrunken centroids** (pamr) | Computes each class's average profile (its centroid) and shrinks each gene's class difference towards zero. Genes that shrink to zero drop out. The **shrinkage threshold** sets how hard it shrinks. **Equal priors** stop the larger ALL group being favoured. |
+| **Minimum-error rule vs one-standard-error (1-SE) rule** | Two ways of choosing the shrinkage. Minimum-error takes the setting with the lowest CV error. 1-SE takes the strongest shrinkage, and so the fewest genes, whose error is within one standard error of the minimum. The 1-SE rule trades a tiny loss in CV accuracy for a simpler, usually more stable model. |
+
+### Uncertainty and significance
+
+| Term | Plain meaning |
+|---|---|
+| **95% confidence interval (CI)** | A range that, under repeated sampling, would contain the true value 95% of the time. With 14 AML patients, intervals are wide. |
+| **Exact (Clopper-Pearson) CI** | The standard interval for a proportion such as 13/14. It is valid even with very few patients and even when there are no errors. |
+| **Bootstrap CI** | Resample the test patients with replacement 2000 times, recompute the measure each time, and take the middle 95%. Used here only for AUC, which has no simple exact interval. |
+| **Permutation test** | Shuffle the ALL/AML labels at random and rerun the entire analysis. If the real labels give a far better score than any shuffled labels, the signal is real, not an artefact of the method. |
+| **p-value** | The chance of a result at least this extreme if there were no real signal. |
+| **Selection frequency** | Refit the model on many random 80% subsets of the training patients and count how often each gene is chosen. Genes chosen nearly every time are robust. |
+
+---
+
+## 2. Starting point: reproducing the original analysis
+
+- **What:** we re-ran the original method exactly. Genes were ranked on all 38 training patients, then caret's 5-fold CV chose k from 1 to 15 (`A1_original_caret_leaky_cv.csv`).
+- **Why:** to make sure the appendix starts from the same place as the report before changing anything.
+- **Result:**
+  - The top-10 genes matched the report exactly.
+  - 3051 genes passed the variation filter.
+  - CV AUC was 1.000 for every k, so caret's tie-break picked k = 15.
+- **Meaning:** the starting point is correct. A CV AUC of exactly 1.000 at every k is itself a warning sign. CV could not tell the k values apart, so k = 15 was chosen by a default rule, not by the data.
+
+Gene symbols come from the NCBI GEO annotation of the Hu6800 array (GPL80), because the Bioconductor annotation package was not installed. In that annotation, probe D88270_at is **VPREB1**; the report's Table 2 calls it IGL.
+
+---
+
+## 3. Nested cross-validation: how well does each method really do?
+
+**What.** Seven procedures were run through the same nested CV, using identical folds:
+
+- **Outer loop:** stratified 5-fold, repeated 20 times. Every training patient is scored 20 times by a model that never saw them.
+- **Inner loop:** stratified 5-fold, repeated 10 times, inside every outer training part. It chooses k, the number of genes, lambda or shrinkage, and the Youden cut-off.
+- **Refitted inside every fold:** every data-dependent step, including the variation filter, gene ranking, z-scoring, the hyperparameter and the cut-off.
+
+**Why each procedure was included.**
+
+| Procedure | Why |
+|---|---|
+| KNN, leaky | The original method (genes ranked once on all 38), inside the new framework, for comparison. |
+| KNN, honest, \|log2 FC\| | The original method done properly: genes re-ranked inside every fold. Answers known problem 1. |
+| KNN, honest, t-statistic | Same, but ranking genes by t-statistic. Answers known problem 2 (fold change ignores within-class variance). |
+| KNN, honest, panel size tuned | The inner CV chooses the panel size (1, 2, 3, 5, 10, 20 or 50 genes) as well as k. Answers known problem 6 (panel size was read off the test set). |
+| Elastic net | Pre-declared primary model: a different kind of model that picks its own genes and handles imbalance with class weights. Answers known problem 5 (only one model was tried). |
+| Shrunken centroids, minimum-error rule | A third, very different model designed for gene-expression data. Pre-declared. |
+| Shrunken centroids, 1-SE rule | Added **after** seeing the minimum-error rule choose no shrinkage on a one-patient difference. Post hoc, so it is labelled as such and not used for any headline claim. |
+
+Version 2 repeats the inner CV 10 times. In version 1 a single inner split was used, and the chosen settings jumped around between seeds (for example k = 7 vs k = 11). Averaging over 10 inner splits makes the choices stable: honest KNN now chooses k = 11 with both seeds.
+
+**Result** (`A2_nested_cv_performance.csv`, seed 2026). Figures are the mean, with the range across repeats in brackets.
+
+| Procedure | AUC | Sensitivity at 0.5 | Sensitivity at Youden | Balanced accuracy at 0.5 | Balanced accuracy at Youden |
 |---|---|---|---|---|---|
-| KNN, leaky (genes ranked on all 38) | 0.5 | 0.977 (0.955-1.000) | 0.936 (0.818-1.000) | 1.000 (1.000-1.000) | 0.968 (0.909-1.000) |
-| KNN, leaky | Youden | 0.977 | 0.950 (0.909-1.000) | 1.000 | 0.975 (0.955-1.000) |
-| KNN, honest (genes ranked in fold) | 0.5 | 0.969 (0.931-1.000) | 0.782 (0.589-0.957) | 0.994 (0.963-1.000) | 0.888 (0.786-0.978) |
-| KNN, honest | Youden | 0.969 | 0.932 (0.814-1.000) | 0.972 (0.926-1.000) | 0.952 (0.879-1.000) |
-| Elastic net (primary) | 0.5 | 0.997 (0.991-1.000) | 0.955 (0.861-1.000) | 0.981 (0.944-1.000) | 0.968 (0.913-1.000) |
-| Elastic net | Youden | 0.997 | 0.977 (0.909-1.000) | 0.974 (0.944-1.000) | 0.976 (0.945-1.000) |
-| Shrunken centroids | 0.5 | 0.981 (0.951-1.000) | 0.923 (0.818-1.000) | 0.933 (0.850-1.000) | 0.928 (0.867-0.991) |
-| Shrunken centroids | Youden | 0.981 | 0.914 (0.770-1.000) | 0.941 (0.850-1.000) | 0.927 (0.853-0.973) |
+| KNN, leaky | 0.982 (0.953-1.000) | 0.927 | 0.959 | 0.964 | 0.980 |
+| KNN, honest, \|log2 FC\| | 0.992 (0.954-1.000) | **0.709** | 0.968 | 0.854 | 0.973 |
+| KNN, honest, t-statistic | **1.000** (0.997-1.000) | 0.973 | 0.986 | **0.981** | 0.984 |
+| KNN, honest, panel tuned | 0.967 (0.876-1.000) | 0.718 | 0.923 | 0.858 | 0.950 |
+| Elastic net (primary) | 0.996 (0.987-1.000) | 0.964 | 0.986 | 0.969 | 0.979 |
+| Shrunken centroids, minimum-error | 0.993 (0.967-1.000) | 0.941 | 0.941 | 0.956 | 0.957 |
+| Shrunken centroids, 1-SE (post hoc) | 0.983 (0.958-1.000) | 0.932 | 0.914 | 0.931 | 0.928 |
 
-What this shows:
+Specificity was 0.93-1.00 for every procedure (`A2` gives the full table).
 
-- **The original CV AUC of 1.000 was optimistic, but the honest AUC is still high.** Ranking genes inside each fold gives a CV AUC of 0.969 for KNN. The honest and leaky AUC intervals overlap (0.931-1.000 vs 0.955-1.000), so the AUC gap alone is not convincing.
-- **The leak shows up mainly in sensitivity and in how k was chosen:**
-  - At the 0.5 cut-off, honest KNN caught 0.782 of AML in CV, against 0.936 for the leaky version.
-  - In the leaky version, every one of the 100 outer fits had tied inner AUCs across k values. In the honest version, 69 of 100 did (`A3_nested_cv_tuning.csv`).
-  - The leaky version chose k = 1 or 3 in 90 of 100 fits. The honest version spread its choices from k = 1 to 13.
-- **Averaging over folds is not the explanation.** caret averages the AUC over folds of about 8 patients, whereas the table above pools all out-of-fold predictions. The two give almost the same answer (`A4_pooled_vs_fold_averaged_auc.csv`): 0.977 vs 0.977 for leaky KNN, and 0.969 vs 0.973 for honest KNN.
-- **Remaining differences from the original 1.000:**
-  - caret reports a separate AUC for each fixed k. Here, k itself is tuned inside every fold.
-  - The original z-scored all 38 patients before CV.
-  - The original used one split, not 20 repeats.
-  - This appendix does not separate the contributions of these three differences.
-- **Elastic net, the pre-declared primary model, had the highest and most stable CV AUC:** 0.997, with a standard deviation (SD) of 0.003 across repeats.
-  - Shrunken centroids: 0.981 (SD 0.017).
-  - Honest KNN: 0.969 (SD 0.025).
-  - Shrunken centroids and honest KNN overlap with each other and with the top of the elastic net range.
-- **Constraint on k:** k was limited to odd values with k < 2 x (AML patients in the smallest inner fitting set), so that AML can win a majority vote. This kept k at 13 or below inside the outer folds.
+Tuning behaviour (`A3_nested_cv_tuning.csv`):
 
-## 2. Decision threshold
+- **Leaky KNN** had tied choices in 87 of 100 outer fits, and chose k = 1 or 3 in 69 of them.
+- **Honest \|log2 FC\| KNN** mostly chose k = 9 or 11 (47 fits).
+- **The panel-tuned KNN** chose 50 genes in 87 of 100 fits, 20 genes in 7, 10 in 4 and 5 in 2. It never chose 1, 2 or 3.
+- **Elastic net** used 68-94 genes (median 80).
 
-The Youden threshold was always chosen from inner-fold out-of-fold probabilities of the training data. Ties were broken by taking the cut-off closest to 0.5.
+**Meaning.**
 
-- **KNN:** the threshold was the main fix, as expected from problem 3 (imbalance).
-  - Honest KNN's CV sensitivity rose from 0.782 to 0.932.
-  - Specificity fell only slightly, from 0.994 to 0.972.
-  - The median tuned cut-off was 0.207, far below 0.5.
-- **Elastic net:** it was already trained with class weights, so tuning the threshold changed little. CV sensitivity went from 0.955 to 0.977 with seed 2026, and from 0.973 to 0.964 with seed 2028.
-- **Shrunken centroids:** these use equal class priors, and tuning the threshold made no consistent difference.
+- **The leak changed which k was chosen, not mainly the AUC.**
+  - With leaked genes, the training patients separate perfectly, many k values tie, and the tie-break falls to small k.
+  - With honest ranking, CV prefers larger k (9-11). With 27 ALL vs 11 AML, large k dilutes AML votes, so AML recall at 0.5 falls to 0.709.
+  - This is exactly the problem the original report found on the test set (9/14 AML). The original's CV AUC of 1.000 hid it.
+  - The Youden cut-off fixes most of it: sensitivity rises from 0.709 to 0.968.
+- **Ranking genes by t-statistic worked better than fold change** (known problem 2). It gave AUC 1.000 vs 0.992, and balanced accuracy at 0.5 of 0.981 vs 0.854. Seed 2028 agreed: 0.999 vs 0.991, and 0.990 vs 0.832. Genes that differ consistently, not just on average, gave neighbours that vote correctly even at the default cut-off.
+- **When the data choose the panel size, they choose large panels** (known problem 6). Tuning the size cost a little AUC (0.967 vs 0.992 for a fixed 50), because the noisy inner CV occasionally picked a smaller panel.
+- **Elastic net was the most stable** procedure (AUC range 0.987-1.000).
+- **The post-hoc 1-SE rule did not improve shrunken centroids in CV** (AUC 0.983 vs 0.993).
+- **Pooling vs averaging folds makes no difference** (`A4_pooled_vs_fold_averaged_auc.csv`): pooled and fold-averaged AUC agree to within 0.008 for every procedure. So the original 1.000 was not caused by averaging over small folds.
 
-## 3. Independent test set (34 patients, each model used once)
+---
 
-`D2_test_performance_bootstrap_ci.csv` and `D3_test_confusion_matrices.csv` (seed 2026):
+## 4. The decision threshold: 0.5 vs Youden
 
-| Model | Cut-off | AUC (95% CI) | AML recall (95% CI) | Specificity | Accuracy (95% CI) | TP/FN/TN/FP |
-|---|---|---|---|---|---|---|
-| KNN, honest (k = 7) | 0.5 | 0.998 (0.989-1.000) | 0.929 (0.786-1.000) | 1.000 | 0.971 (0.912-1.000) | 13/1/20/0 |
-| KNN, honest | 0.214 | same | 0.929 (0.786-1.000) | 1.000 | 0.971 | 13/1/20/0 |
-| Elastic net (83 genes) | 0.5 | 0.996 (0.979-1.000) | 0.857 (0.643-1.000) | 1.000 | 0.941 (0.853-1.000) | 12/2/20/0 |
-| Elastic net | 0.380 | same | 0.929 (0.786-1.000) | 1.000 | 0.971 (0.912-1.000) | 13/1/20/0 |
-| Shrunken centroids (3051 genes) | 0.5 | 0.993 (0.968-1.000) | 0.786 (0.571-1.000) | 1.000 | 0.912 (0.824-1.000) | 11/3/20/0 |
-| Shrunken centroids | 0.489 | same | 0.786 (0.571-1.000) | 1.000 | 0.912 | 11/3/20/0 |
+- **What:** each procedure was scored at the default 0.5 cut-off and at its Youden cut-off. The Youden cut-off was chosen from inner out-of-fold predictions on training patients only, averaged over the 10 inner repeats.
+- **Why:** known problem 3. The original model ranked patients almost perfectly (AUC 0.991) but missed 5 AML at 0.5, which points to the cut-off, not the model.
+- **Result in CV** (section 3 table):
+  - **KNN:** this is where the threshold matters. Sensitivity rose from 0.709 to 0.968 for \|log2 FC\| KNN (seed 2028: 0.668 to 0.964), and from 0.718 to 0.923 for panel-tuned KNN. The median tuned cut-off for \|log2 FC\| KNN was 0.217, far below 0.5.
+  - **Elastic net:** it was already trained with class weights, which correct the imbalance inside the model. Tuning changed little (0.964 to 0.986; seed 2028: 0.973 to 0.964).
+  - **Shrunken centroids:** their posteriors are almost always 0 or 1, so moving the cut-off changes nothing.
+- **Result on the test set** (section 5): the tuned cut-off added one AML for \|log2 FC\| KNN and panel-tuned KNN (12 to 13 of 14), at the cost of one false positive. It changed nothing for the other models at seed 2026.
+- **Meaning:** the report's explanation is right. The missed AML were a cut-off problem caused by imbalance, and a cut-off learned from training data fixes it for KNN. For a model that already weights the classes, such as elastic net, a separate threshold step adds little.
 
-For comparison, the original KNN (50 genes, k = 15, cut-off 0.5) caught 9 of 14 AML (TP 9, FN 5, TN 20, FP 0), with test AUC 0.991.
+---
 
-- **No winner is declared, and the data would not support one.** All three test AUCs lie between 0.993 and 0.998, and their CIs overlap almost completely. Recall CIs also overlap (lower limits 0.571-0.786, all reaching 1.000).
-- **All three honest models caught more AML at 0.5 than the original 9/14.** They caught 11-13 of 14, with no false positives at seed 2026.
-- **The leaky KNN row is not a different model on the test set.** Its final model (`D1_final_models.csv`) is also trained on all 38 patients with the same 50 genes, so it differs from honest KNN only in the k and cut-off it chose. It caught 13/14 at 0.5 and 14/14 at its Youden cut-off.
-- **Shrunken centroids at seed 2026 used all 3051 genes.** The inner CV error was 1/38 with no shrinkage and 2/38 at every shrinkage value up to 1.29. The pre-declared rule (lowest error) therefore picked no shrinkage on a one-patient difference. With seed 2028 the same rule picked shrinkage 1.075 (886 genes). The amount of shrinkage is not stable on 38 patients.
+## 5. The independent test set (34 patients, used once)
+
+**What.** Each procedure was refitted on all 38 training patients exactly as in CV, including the 10 x 5-fold inner CV for its settings and cut-off. It then predicted the 34 test patients **once**. Nothing — no model, gene number, setting or cut-off — was chosen using the test set.
+
+**Why.** CV estimates come from the same 38 patients. The test set comes from a separate set of patients, partly from other hospitals, and is the fairest check.
+
+**Uncertainty.** Recall, specificity and accuracy use exact Clopper-Pearson CIs. Version 1 used the bootstrap, which was too narrow here: for 20/20 it gave 1.000-1.000 instead of 0.832-1.000. AUC uses a bootstrap CI.
+
+**Result** (`D1`, `D2`, `D3`, seed 2026):
+
+| Procedure | Final setting | Test AUC (95% CI) | AML recall at 0.5 (exact CI) | At Youden cut-off |
+|---|---|---|---|---|
+| Original report (for reference) | k = 15, 50 genes | 0.991 | 9/14 = 0.643 (0.351-0.872) | n/a |
+| KNN, leaky | k = 5, 50 genes | 0.998 (0.989-1.000) | 13/14 = 0.929 (0.661-0.998) | 13/14, 0 FP (cut 0.260) |
+| KNN, honest, \|log2 FC\| | k = 11, 50 genes | 0.996 (0.979-1.000) | 12/14 = 0.857 (0.572-0.982) | 13/14, 1 FP (cut 0.205) |
+| KNN, honest, t-statistic | k = 9, 50 genes | 0.996 (0.979-1.000) | 13/14, 1 FP | 13/14, 1 FP (cut 0.556) |
+| KNN, honest, panel tuned | k = 11, 50 genes | 0.996 (0.979-1.000) | 12/14 | 13/14, 1 FP (cut 0.205) |
+| Elastic net (primary) | 83 genes | 0.996 (0.979-1.000) | 12/14 | 12/14, 0 FP (cut 0.566) |
+| Shrunken centroids, minimum-error | 3051 genes (no shrinkage) | 0.993 (0.968-1.000) | 11/14 = 0.786 (0.492-0.953) | 11/14, 0 FP |
+| Shrunken centroids, 1-SE (post hoc) | 1201 genes | 0.993 (0.968-1.000) | 13/14, 1 FP | 13/14, 1 FP |
+
+Notes:
+
+- **FP** is a false positive: an ALL patient called AML. With no FP, specificity is 20/20 = 1.000 (0.832-1.000); with one FP, 19/20 = 0.950 (0.751-0.999).
+- **Test accuracy** was 31-33 of 34 for every procedure. For example, 32/34 = 0.941 (0.803-0.993).
+
+**Meaning.**
+
+- **No procedure can be declared best.** Every test AUC is 0.993-0.998 with overlapping intervals, and every AML recall interval overlaps every other.
+- **Every honest procedure caught more AML at 0.5 than the original (11-13 vs 9 of 14).** The most likely reason is that the original's k = 15 was chosen by a tie-break, not by the data.
+- **The "leaky" row is not leaky on the test set.** Its final model is trained on all 38 patients like the others. It differs only in which k and cut-off its inner CV chose.
 
 **Who was misclassified** (`D5_misclassified_test_patients.csv`):
 
-- **All errors at seed 2026 came from hospitals with no training samples.** The training samples came from DFCI and CALGB only. At seed 2026, every misclassified test patient, for every model and both cut-offs, came from St-Jude or CCG.
-- **Patient 66 was missed by every honest model at the 0.5 cut-off, with both seeds.** This patient is AML, bone marrow, from CCG; elastic net scored them 0.307. They were caught only at very low cut-offs: by leaky KNN at its Youden cut-off of 0.167 (seed 2026), and by elastic net at its Youden cut-off of 0.257 (seed 2028).
-- **At seed 2028, one training-hospital patient was also wrong.** Patient 67 (ALL, blood, DFCI) became a false positive for honest KNN and elastic net at their tuned cut-offs, and for shrunken centroids at both cut-offs.
-- **In the training set, hospital and diagnosis are completely confounded.** All 27 ALL come from DFCI and all 11 AML from CALGB, so a model cannot separate "AML" from "processed at CALGB". In the test set, AML from the two new hospitals got lower elastic net probabilities than AML from CALGB: median 0.84 vs 0.99, Wilcoxon p = 0.034. St-Jude contributes both classes, and its 3 ALL were still scored as clearly ALL (0.001-0.014), so the model is not detecting hospital alone. The confounding does, however, plausibly explain why the misses are all AML from new hospitals.
+- **Patient 66** (AML, bone marrow, CCG) was missed by **every procedure at both cut-offs** with seed 2026. With seed 2028 it was missed by every procedure at 0.5 and by all but leaky KNN at the Youden cut-off. Elastic net scored this patient 0.307.
+- **Other missed AML:** patient 60 (bone marrow, St-Jude: elastic net and minimum-error centroids), patient 54 (bone marrow, St-Jude: minimum-error centroids), and patient 64 (blood, CCG: \|log2 FC\| and panel KNN at 0.5).
+- **Every missed AML patient came from a hospital not represented in training** (St-Jude or CCG).
+- **The only false positive was patient 67** (ALL, blood, DFCI), for the t-statistic KNN, both KNN variants at their Youden cut-offs, and 1-SE centroids.
 
-## 4. Permutation test (elastic net, full nested CV rerun on each permutation)
+---
 
-`E2_permutation_summary.csv`:
+## 6. Hospital: a confounder found during the review
 
-| Seed | Permutations | Observed mean CV AUC | Null mean (SD) | Null 95th percentile | Null maximum | Empirical p |
-|---|---|---|---|---|---|---|
-| 2026 | 200 | 0.997 | 0.489 (0.063) | 0.632 | 0.727 | 0.005 |
-| 2028 | 200 | 0.997 | 0.490 (0.067) | 0.639 | 0.793 | 0.005 |
+**What.** The script tabulates the hospital each sample came from (`J1`, `J2`). It then compares test scores and errors between hospitals that were and were not represented in training (`J3`, Figure 7).
 
-- **The null is centred on chance.** That is also a check against leakage: a pipeline that leaked labels would give permuted-label AUCs above 0.5.
-- **No permutation came close to the observed AUC.** p = 1/201 is the smallest value possible with 200 permutations.
+**Why.** In the training set, hospital and diagnosis turn out to be identical:
 
-## 5. Gene selection stability (100 stratified 80% subsamples)
+| Training set | ALL | AML |
+|---|---|---|
+| DFCI | 27 | 0 |
+| CALGB | 0 | 11 |
 
-`F_gene_selection_frequency.csv` and `F_original_top10_selection.csv` (seed 2026):
+So any difference in how the two hospitals collected or processed samples is perfectly mixed with the ALL/AML difference. From the training data alone, nobody can tell whether a model learned "AML" or "processed at CALGB".
 
-- **Elastic net** selected a median of 81 probes per fit; 25 probes were selected in at least 90% of subsamples.
-  - Probes selected in 100% of subsamples: CST3, ZYX, LYN, STOM, CD33, CCND3 (higher in ALL), CHRFAM7A, LEPROT, CAT and LTC4S.
-  - Also above 0.9: ELANE (0.99), HOXA9 (0.99), SON (0.99, higher in ALL) and MYB (0.98, higher in ALL).
-  - All of the listed probes are higher in AML unless marked otherwise.
-- **Shrunken centroids** selected a median of 212 probes per fit; 8 probes were selected in at least 90% of subsamples.
-  - The most frequent: CST3 0.99, CFD 0.95, CSTA 0.95, ELANE 0.92, CXCL8 0.92 (two probes), AZU1 0.91 and ZYX 0.90 (all higher in AML).
-- **Original top-10 fold-change probes:**
+**Result.**
 
-| Probe | Symbol (GPL80) | Elastic net frequency | Shrunken centroids frequency |
+- **The test set contains two new hospitals:** St-Jude (3 ALL, 5 AML) and CCG (5 AML).
+- **The model is not detecting hospital alone.** St-Jude's 3 ALL were still scored as clearly ALL: the highest elastic net score was 0.014.
+- **But AML from the new hospitals scored lower than AML from CALGB:**
+  - elastic net: median 0.839 vs 0.994 (Wilcoxon p = 0.036);
+  - \|log2 FC\| KNN: 0.591 vs 0.864 (p = 0.022).
+  - For the t-statistic KNN and the centroid models, scores were mostly exactly 1.000, so no difference could show (p = 0.18-0.28).
+- **Errors at 0.5:** 1-3 of 13 patients from new hospitals vs 0-1 of 21 from training hospitals. Only one procedure reached p < 0.05 (minimum-error centroids, p = 0.048).
+
+**Meaning.**
+
+- The ALL/AML signal is real.
+- Part of what the models learned may be specific to the AML samples from CALGB, which is the most likely reason every missed AML came from a new hospital.
+- This should be stated as a limitation in both the main report and the appendix.
+
+---
+
+## 7. Bone marrow vs peripheral blood
+
+- **What:** test performance was split by sample source (`G_bone_marrow_vs_blood.csv`). The test set has 24 bone marrow samples (14 ALL, 10 AML) and 10 blood samples (6 ALL, 4 AML). All training samples are bone marrow.
+- **Why:** question 3 of the report. Does a model trained on marrow work on blood, which is much less invasive to collect?
+- **Result** (seed 2026, errors / samples):
+
+| Procedure | Bone marrow, 0.5 | Blood, 0.5 | Blood, Youden |
 |---|---|---|---|
-| X82240_rna1_at | TCL1A | 0.08 | 0.72 |
-| M84526_at | CFD | 0.37 | 0.95 |
-| X76223_s_at | MAL | 0.00 | 0.38 |
-| M27891_at | CST3 | 1.00 | 0.99 |
-| M30703_s_at | AREG | 0.16 | 0.74 |
-| L33930_s_at | CD24 | 0.00 | 0.58 |
-| D88270_at | VPREB1 | 0.10 | 0.69 |
-| M57731_s_at | CXCL2 | 0.13 | 0.85 |
-| M20203_s_at | ELANE | 0.02 | 0.83 |
-| M27783_s_at | ELANE | 0.99 | 0.92 |
+| KNN, honest, \|log2 FC\| | 1/24 | 1/10 (missed AML 64) | 1/10 (false positive 67) |
+| KNN, honest, t-statistic | 1/24 | 1/10 (67) | 1/10 (67) |
+| Elastic net | 2/24 | 0/10 | 0/10 |
+| Shrunken centroids, minimum-error | 3/24 | 0/10 | 0/10 |
 
-- **Only two of the original top-10 were kept reliably by elastic net:** CST3 and one of the two ELANE probes. It selected the others in 37% of subsamples or fewer. Elastic net tends to keep one gene from a group of correlated genes, so a low frequency does not mean a gene carries no signal.
-- **Shrunken centroids kept most of the original top-10 more often**, with frequencies of 0.38-0.99.
-- **The stable genes are known lineage markers:** myeloid genes (CST3, CD33, ELANE, MPO, AZU1, CFD, LYN) are higher in AML, and lymphoid or cell-cycle genes (CCND3, MYB) are higher in ALL. This supports the biological reading in the report.
+  - With 4 blood AML, recall of 4/4 still has an exact CI of 0.398-1.000.
+  - With 6 blood ALL, specificity of 6/6 has 0.541-1.000.
+- **Meaning:** there was no sign that blood is worse than marrow. However, 10 blood samples cannot show that it is as good. In the test set, sample type is also mixed with hospital: all CCG blood samples are AML and all DFCI blood samples are ALL.
 
-## 6. Bone marrow vs peripheral blood (test set)
+---
 
-`G_bone_marrow_vs_blood.csv`. The test set has 24 bone marrow samples (14 ALL, 10 AML) and 10 blood samples (6 ALL, 4 AML).
+## 8. How many genes are needed? (panel-size curve)
 
-| Model (seed 2026) | Cut-off | BM errors / 24 | BM accuracy (95% CI) | PB errors / 10 | PB accuracy (95% CI) |
+**What.** KNN with \|log2 FC\| ranking was run as seven fixed procedures (1, 2, 3, 5, 10, 20 and 50 genes), each through the full nested CV with k and the cut-off tuned inside (`K_panel_size_curve.csv`, Figure 6). Each fixed panel was also applied to the test set, for description only; nothing was chosen from the test results.
+
+**Why.** Known problem 6: the report's "3 genes is best" was read off the 34 test patients, so the test set was effectively used to choose.
+
+**Result** (seed 2026; CV figures are means over repeats):
+
+| Genes | CV AUC | CV balanced accuracy (Youden) | Test accuracy at 0.5 (exact CI) |
+|---|---|---|---|
+| 1 | 0.754 | 0.698 | 0.588 (0.407-0.754): every patient called ALL |
+| 2 | 0.859 | 0.812 | 0.971 (0.847-0.999) |
+| 3 | 0.918 | 0.825 | 0.971 (0.847-0.999) |
+| 5 | 0.968 | 0.908 | 0.941 (0.803-0.993) |
+| 10 | 0.961 | 0.921 | 0.912 (0.763-0.981) |
+| 20 | 0.955 | 0.934 | 0.941 (0.803-0.993) |
+| 50 | 0.992 | 0.973 | 0.941 (0.803-0.993) |
+
+Seed 2028 showed the same pattern: CV AUC 0.719 with 1 gene, 0.934 with 3, 0.963 with 5 and 0.991 with 50.
+
+**Meaning.**
+
+- **The training data say performance keeps improving up to 50 genes,** and that at least 5 genes are needed for a CV AUC above 0.95.
+- **The test set again favours 2-3 genes (33/34),** reproducing the report's pattern. But its intervals overlap those for 50 genes, and the training data do not support it. This is the noise of 34 patients.
+- **The single-gene panel is fragile:** on the test set it called every patient ALL at 0.5 (AUC 0.911).
+- **Recommendation:** report "about 5 or more genes; 50 was best in CV", not "3 genes is enough".
+
+---
+
+## 9. Permutation test: is the signal real?
+
+**What.** For the primary model (elastic net), the training labels were shuffled at random 200 times. Each time, the **entire** nested CV was rerun (`E2`, Figure 4).
+
+**Why.** Known problem 4. A complicated pipeline can sometimes produce good-looking numbers from pure noise, especially if something leaks. If shuffled labels also score well, the result means nothing.
+
+**Result:**
+
+| Seed | Observed mean CV AUC | Shuffled labels: mean (SD) | 95th percentile | Maximum | p |
 |---|---|---|---|---|---|
-| KNN, honest | 0.5 | 1 | 0.958 (0.875-1.000) | 0 | 1.000 (1.000-1.000) |
-| Elastic net | 0.5 | 2 | 0.917 (0.792-1.000) | 0 | 1.000 |
-| Elastic net | Youden | 1 | 0.958 (0.875-1.000) | 0 | 1.000 |
-| Shrunken centroids | 0.5 | 3 | 0.875 (0.750-1.000) | 0 | 1.000 |
+| 2026 | 0.996 | 0.504 (0.072) | 0.684 | 0.821 | 0.005 |
+| 2028 | 0.997 | 0.491 (0.057) | 0.619 | 0.784 | 0.005 |
 
-- **At seed 2026, no model made an error on the 10 blood samples.** At seed 2028, each model made at most one blood error per cut-off. Four of those five errors were patient 67 (ALL, DFCI, false positive). The fifth was honest KNN at 0.5 missing patient 64 (AML, CCG).
-- **A marrow-trained model did not do worse on blood, but this test is weak.** It rests on 4 blood AML and 6 blood ALL patients. A bootstrap interval of 1.000-1.000 only means there were no errors to resample, not that there is no uncertainty.
-- **Hospital is mixed up with sample type.** The errors line up with the hospitals that have no training samples (section 3), and those hospitals contribute both marrow and blood samples. That confounder could matter more than sample type.
+**Meaning.**
 
-## 7. Seed sensitivity (2026 vs 2028)
+- With shuffled labels the pipeline scores about 0.5, which is chance, as it should. That is also evidence of no leakage.
+- No shuffle came close to the real 0.996. p = 1/201 is the smallest value possible with 200 shuffles.
+- The ALL/AML signal is real. For this well-known dataset that was expected, so the test mainly works as a check on the pipeline.
 
-The whole analysis was rerun with seed 2028, which changed the folds, bootstrap resamples, permutations and subsamples.
+---
 
-- **Unchanged:**
-  - Elastic net CV AUC: 0.997 with both seeds.
-  - Permutation p: 0.005 with both seeds.
-  - Every test AUC: between 0.993 and 1.000.
-  - Every CI still overlaps every other CI.
-  - The tuned threshold raises KNN's CV sensitivity: 0.782 to 0.932 (seed 2026) and 0.759 to 0.941 (seed 2028).
-  - The leaky vs honest pattern in sensitivity at 0.5: 0.936 vs 0.782 (seed 2026) and 0.950 vs 0.759 (seed 2028).
-- **Changed, by one or two patients:**
-  - Honest KNN chose k = 11 instead of k = 7, and caught 12/14 instead of 13/14 at 0.5.
-  - Elastic net with the tuned cut-off caught 14/14 with 1 false positive, instead of 13/14 with none.
-  - Shrunken centroids chose shrinkage 1.075 (886 genes) instead of no shrinkage, and caught 13/14 with 1 false positive, instead of 11/14 with none.
-- **No conclusion changes.** Each of these changes is within the bootstrap CIs. That is itself a finding: the difference between models on this test set is the same size as the effect of the random seed.
+## 10. Which genes does the model rely on? (gene stability)
 
-## 8. How this relates to the original report
+**What.** Elastic net and both shrunken-centroid procedures were refitted on 100 random stratified 80% subsets of the training patients, with full inner CV each time. We recorded how often each probe was selected (`F_gene_selection_frequency.csv`, `F_original_top10_selection.csv`, Figure 5).
 
-- **Problem 1, leaky CV:** confirmed. The CV AUC of 1.000 for every k came from leaky gene ranking and caret's tie-break. Honest nested CV gives AUC 0.969 for KNN.
-- **Problem 3, threshold:** confirmed for KNN. A cut-off learned in training CV fixes most of the missed AML in CV. On the test set, the honest KNN already caught 13/14 at 0.5. Its final model chose k = 7, not k = 15, which is the most likely reason, but this was not tested separately.
-- **Problem 6, panel size:** not re-tested as a curve. Where the training data chose the panel size themselves, they did not pick 2-5 genes: elastic net used 83 genes and shrunken centroids 886-3051. So the report's "3 genes is best" claim is not supported by any choice made without the test set. Treat it as a test-set observation, not a finding.
-- **Blood samples:** the report says 9 of 10 blood samples were correct. The models here got 10 of 10 (seed 2026). Neither number can show that blood is as good as marrow, because there are only 10 blood samples and hospital is a confounder.
+**Why.** A gene list from one fit can be an accident of which patients happened to be included. Genes chosen in nearly every subset are the robust ones, and they can be checked against known biology.
 
-## 9. Leakage check: what was verified and how
+**Result** (seed 2026):
 
-1. **By design.** `fit_model()` receives only the fitting rows, `X[train, ]` and `y[train]`. Inside it, these steps are refitted from those rows only:
-   - the variation filter;
-   - fold-change ranking (KNN: redone in every inner fold as well);
-   - z-scoring (KNN) or each package's internal standardisation;
-   - the choice of k, lambda or shrinkage;
-   - the Youden cut-off.
+- **Elastic net** used a median of 82 probes per fit; 26 probes were chosen in at least 90% of subsets.
+  - Chosen every time (among others): CST3, ZYX, RBBP4 (higher in ALL), LYN, STOM, CD33, CHRFAM7A, LEPROT, HOXA9 and LTC4S. All of these are higher in AML except RBBP4.
+- **Shrunken centroids, minimum-error rule:** a median of 1991 probes per fit (367 chosen in at least 90% of subsets). It keeps almost every gene, so its frequencies say little.
+- **Shrunken centroids, 1-SE rule:** a median of 236 probes per fit (32 chosen in at least 90%). The most frequent were CST3 1.00, CFD 0.99, ELANE 0.99, CXCL8 0.99 (two probes), CSTA 0.99, ZYX 0.99, MGST1 0.97, MPO 0.96 and AZU1 0.95, all higher in AML.
+- **The original top-10 fold-change genes:**
 
-   Inner folds are drawn only from outer training rows. The test set appears only in `predict_model()`, after a model is fitted. All folds, permutations and subsamples are drawn in the main process before any fitting. The script asserts that every outer and inner fold contains both classes.
-2. **Canary checks** (`I_leakage_canary_checks.csv`, all TRUE for all four models, both seeds):
-   - The outer validation rows were replaced with random expression values and their labels flipped. The model was then refitted. Genes, k, lambda, shrinkage, cut-off and training-set predictions were all identical.
-   - The final models were refitted with the test set replaced by noise and gave identical results.
+| Probe | Symbol | Elastic net | Centroids, 1-SE |
+|---|---|---|---|
+| X82240_rna1_at | TCL1A | 0.08 | 0.86 |
+| M84526_at | CFD | 0.39 | 0.99 |
+| X76223_s_at | MAL | 0.00 | 0.33 |
+| M27891_at | CST3 | 1.00 | 1.00 |
+| M30703_s_at | AREG | 0.10 | 0.87 |
+| L33930_s_at | CD24 | 0.00 | 0.64 |
+| D88270_at | VPREB1 | 0.07 | 0.77 |
+| M57731_s_at | CXCL2 | 0.05 | 0.93 |
+| M20203_s_at | ELANE | 0.01 | 0.91 |
+| M27783_s_at | ELANE | 0.96 | 0.99 |
 
-   Because the fitting functions never receive those rows, these checks confirm the design rather than test something independent.
-3. **Permutation null centred on 0.49**, which is what a leak-free pipeline should give (section 4).
-4. **Information shared within the training data, disclosed:**
-   - For elastic net and shrunken centroids, the variation filter and the lambda or shrinkage grid are computed on the outer training rows and shared by that fold's inner folds. The filter uses no labels.
-   - Neither touches outer validation rows or the test set.
+**Meaning.**
 
-## 10. Caveats
+- **The robust genes are known lineage markers:** myeloid genes (CST3, CD33, MPO, ELANE, AZU1, CFD, LYN) are higher in AML. This supports the report's biological reading.
+- **Elastic net keeps only CST3 and one ELANE probe from the original top-10.** It tends to pick one gene from a group of genes that carry the same information, so a low frequency (for example TCL1A 0.08) means "a correlated gene was chosen instead", not "uninformative".
+- **The 1-SE centroid model keeps most of the original top-10** (0.33-1.00).
+- **Frequencies are somewhat optimistic,** because any two 80% subsets share most of their patients.
 
-- **Few AML in inner folds:** the inner fitting sets contain only about 7 AML patients. glmnet warned that a class had fewer than 8 observations. The run log reports 21 warnings in total; their individual text was not captured. In the smoke test they were this glmnet warning.
-- **The bootstrap intervals for proportions are too narrow.** With 14 AML and 20 ALL, the percentile bootstrap cannot go below the observed value when there are no errors, and it understates the width otherwise. Exact Clopper-Pearson intervals are wider:
+---
 
-  | Result | Bootstrap (reported above) | Exact Clopper-Pearson |
-  |---|---|---|
-  | 13/14 AML recall | 0.786-1.000 | 0.661-0.998 |
-  | 12/14 AML recall | 0.643-1.000 | 0.572-0.982 |
-  | 20/20 specificity | 1.000-1.000 | 0.832-1.000 |
-  | 4/4 blood AML | 1.000-1.000 | 0.398-1.000 |
+## 11. Does anything depend on the random seed?
 
-  Use the exact intervals when quoting recall, specificity or accuracy. The bootstrap is kept for AUC, which has no exact interval.
-- **Shrunken centroids posteriors are extreme.** On the test set, every posterior rounds to 0.000 or 1.000 (`D4_test_probabilities.csv`), so the missed AML are confidently wrong. This is why tuning the cut-off cannot change its results.
-- **Ceiling effect:** performance is near the ceiling, and the test set has 14 AML. One patient changes recall by 0.071, so no difference between models in this appendix should be read as meaningful.
+- **What:** the whole analysis was rerun with seed 2028, which changed every fold, permutation, subsample and bootstrap resample.
+- **Why:** to check that no conclusion rests on a lucky random split. The original report also re-ran with seed 2028.
+- **Result:**
+
+| Quantity | Seed 2026 | Seed 2028 |
+|---|---|---|
+| Elastic net CV AUC | 0.996 | 0.997 |
+| t-statistic KNN CV AUC | 1.000 | 0.999 |
+| \|log2 FC\| KNN CV sensitivity, 0.5 to Youden | 0.709 to 0.968 | 0.668 to 0.964 |
+| Permutation p | 0.005 | 0.005 |
+| Final \|log2 FC\| KNN k | 11 | 11 |
+| Elastic net test AML recall at 0.5 | 12/14 | 12/14 |
+| Elastic net test recall at Youden | 12/14 (cut 0.566) | 13/14, 1 FP (cut 0.346) |
+| Minimum-error centroids final genes | 3051 | 1582 |
+| Minimum-error centroids test recall | 11/14 | 13/14, 1 FP |
+| 1-SE centroids final genes | 1201 | 638 |
+
+- **Meaning:**
+  - No conclusion changes.
+  - Repeating the inner CV made the KNN and elastic net choices stable.
+  - The shrunken-centroid gene count is still unstable, so treat that model as the least reliable.
+  - Test counts move by at most two patients, which is within every interval.
+
+---
+
+## 12. Leakage check
+
+**What and how it was verified:**
+
+1. **By design.**
+   - Every fitting step gets only its fitting rows. These steps are refitted inside each fold: the variation filter, gene ranking (KNN: in every inner fold too), z-scoring or package standardisation, the hyperparameter and the cut-off.
+   - Inner folds are drawn only from outer training rows.
+   - The test set is used only for prediction.
+   - All random splits are drawn before any fitting, and every fold is checked to contain both classes.
+2. **Canary checks** (`I_leakage_canary_checks.csv`: all TRUE for all procedures and both seeds).
+   - The outer validation patients were replaced with random noise and their labels flipped. The models were then refitted, and every fitted quantity was identical.
+   - Because the fitting code never receives those rows, this confirms the design rather than testing it independently.
+3. **Permutation null at about 0.5** (section 9), as expected without leakage.
+4. **Information shared within the training data.** The variation filter and the elastic net lambda sequence are computed on the outer training rows and shared by their inner folds. The filter uses no labels, and neither touches validation or test patients.
+
+---
+
+## 13. What changed from version 1, and why
+
+| Change | Reason |
+|---|---|
+| Inner CV repeated 10 times | Version 1's single inner split made k, lambda and shrinkage depend on the seed. |
+| Exact Clopper-Pearson CIs for test proportions | The bootstrap was too narrow with 14 AML (for example 1.000-1.000 for 20/20). |
+| CV brackets labelled "range across repeats" | They are not confidence intervals. |
+| KNN with t-statistic ranking | Known problem 2. |
+| KNN with tuned panel size, and the panel-size curve | Known problem 6. |
+| Shrunken centroids with the 1-SE rule | The minimum-error rule picked no shrinkage on a one-patient difference (post hoc, labelled). |
+| Hospital tables and Figure 7 | The training hospital equals the diagnosis. |
+
+Some version 1 numbers changed as a result. For example, honest \|log2 FC\| KNN CV AUC rose from 0.969 to 0.992, because version 1's unstable choice of k pulled it down. Version 2 supersedes version 1; the earlier numbers remain in the git history.
+
+---
+
+## 14. What the report can and cannot claim
+
+**Can claim:**
+
+- Honest nested CV confirms very strong ALL vs AML separation: CV AUC 0.967-1.000 across procedures, 0.996 for the primary elastic net.
+- The original CV AUC of 1.000 came from ranking genes before CV. It hid the real weakness: low AML recall at 0.5 with a large k.
+- A cut-off learned from training data (Youden) fixes most missed AML for KNN.
+- Ranking genes by t-statistic works better than fold change in CV.
+- All seven procedures agree on the test set (AUC 0.993-0.998), and every honest procedure beat the original's 9/14 AML recall at 0.5.
+- The genes the models rely on are known myeloid and lymphoid markers.
+
+**Cannot claim:**
+
+- That any one model is best.
+- That 2-3 genes are enough. The training data say about 5 or more, with 50 best.
+- That blood works as well as marrow. There are 10 blood samples, and hospital is mixed with sample type.
+- That the model works equally well at a new hospital. The training hospital equals the diagnosis, and every missed AML came from a new hospital.
+
+---
+
+## 15. Caveats
+
+- The test set has 14 AML patients, so one patient changes recall by 0.071.
+- Inner fitting sets hold about 7 AML. glmnet warned that a class had fewer than 8 observations; these warnings appear throughout the run log.
+- Shrunken-centroid scores are almost always exactly 0 or 1, so its missed AML are confidently wrong, and AUC and cut-off tuning say little about it.
+
+---
 
 ## sessionInfo()
 
@@ -210,17 +432,10 @@ R version 4.3.3 (2024-02-29)
 Platform: x86_64-pc-linux-gnu (64-bit)
 Running under: Ubuntu 24.04.4 LTS
 
-Matrix products: default
-BLAS:   /usr/lib/x86_64-linux-gnu/openblas-pthread/libblas.so.3
-LAPACK: /usr/lib/x86_64-linux-gnu/openblas-pthread/libopenblasp-r0.3.26.so;  LAPACK version 3.12.0
-
-attached base packages:
-[1] parallel  stats     graphics  grDevices utils     datasets  methods   base
-
 other attached packages:
  [1] pROC_1.19.1         caret_6.0-94        lattice_0.22-5      ggplot2_3.4.4
  [5] pamr_1.57           glmnet_5.2          Matrix_1.6-5        golubEsets_1.44.0
  [9] Biobase_2.62.0      BiocGenerics_0.48.1
 ```
 
-Full output, including locale and loaded namespaces: `results/sessionInfo.txt`.
+Full output: `results/sessionInfo.txt`.

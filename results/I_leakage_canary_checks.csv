@@ -1,9 +1,15 @@
 "check","model","identical_fit","identical_predictions_on_training_rows"
 "outer validation rows corrupted","KNN, leaky (genes ranked on all 38)",TRUE,TRUE
-"test set replaced by noise","KNN, leaky (genes ranked on all 38)",TRUE,TRUE
-"outer validation rows corrupted","KNN, honest (genes ranked in fold)",TRUE,TRUE
-"test set replaced by noise","KNN, honest (genes ranked in fold)",TRUE,TRUE
+"final model refitted (test set never passed in)","KNN, leaky (genes ranked on all 38)",TRUE,TRUE
+"outer validation rows corrupted","KNN, honest, |log2 FC| (50 genes)",TRUE,TRUE
+"final model refitted (test set never passed in)","KNN, honest, |log2 FC| (50 genes)",TRUE,TRUE
+"outer validation rows corrupted","KNN, honest, t-statistic (50 genes)",TRUE,TRUE
+"final model refitted (test set never passed in)","KNN, honest, t-statistic (50 genes)",TRUE,TRUE
+"outer validation rows corrupted","KNN, honest, panel size tuned (1-50 genes)",TRUE,TRUE
+"final model refitted (test set never passed in)","KNN, honest, panel size tuned (1-50 genes)",TRUE,TRUE
 "outer validation rows corrupted","Elastic net (primary)",TRUE,TRUE
-"test set replaced by noise","Elastic net (primary)",TRUE,TRUE
-"outer validation rows corrupted","Shrunken centroids",TRUE,TRUE
-"test set replaced by noise","Shrunken centroids",TRUE,TRUE
+"final model refitted (test set never passed in)","Elastic net (primary)",TRUE,TRUE
+"outer validation rows corrupted","Shrunken centroids, min-error rule",TRUE,TRUE
+"final model refitted (test set never passed in)","Shrunken centroids, min-error rule",TRUE,TRUE
+"outer validation rows corrupted","Shrunken centroids, 1-SE rule (post hoc)",TRUE,TRUE
+"final model refitted (test set never passed in)","Shrunken centroids, 1-SE rule (post hoc)",TRUE,TRUE
